@@ -26,11 +26,16 @@ fn parse_timestamp_arg() -> (String, i64){
     (dir, ts)
 }
 
-/// obtains list of available route collectors at timestamp, sorted descending by rib size.
+/// obtains list of available route collector RIBs within the hour before and after the timestamp,
+/// sorted descending by rib size.
+///
+/// Please note: In the early days, snapshots were named after when they were uploaded rather than
+/// taken. Hence, there are files that are up to an hour late or sometimes to early, e.g., the
+/// Routeviews6 RIB uploaded at 2008-07-07T00:37:00.
 fn bgpkit_get_ribs_size_ordered(ts: i64) -> Vec<BrokerItem> {
     let broker = BgpkitBroker::new()
-        .ts_start(&ts.to_string())
-        .ts_end(&ts.to_string())
+        .ts_start(&(ts-3600).to_string())
+        .ts_end(&(ts+3600).to_string())
         .data_type("rib");
 
     broker
@@ -80,9 +85,11 @@ fn main() {
     let pool = ThreadPool::new(num_workers);
     let (ch_out, ch_in) = unbounded();
 
+
+    println!("Going through ribs!");
     // get size-ordered broker items at rib ts
     for target in bgpkit_get_ribs_size_ordered(rib_ts){
-
+        println!("Went through file file {}.", &target);
         // ensure needed structures are cloned and ready to move into closure
         let ch_out_cl = ch_out.clone();
 

@@ -85,11 +85,8 @@ fn main() {
     let pool = ThreadPool::new(num_workers);
     let (ch_out, ch_in) = unbounded();
 
-
-    println!("Going through ribs!");
     // get size-ordered broker items at rib ts
     for target in bgpkit_get_ribs_size_ordered(rib_ts){
-        println!("Went through file file {}.", &target);
         // ensure needed structures are cloned and ready to move into closure
         let ch_out_cl = ch_out.clone();
 
@@ -97,7 +94,15 @@ fn main() {
         pool.execute(move || {
 
             // closure that processes the data of a single route collector.
-            let parser = BgpkitParser::new(target.url.as_str()).unwrap();
+            let parser_res = BgpkitParser::new(target.url.as_str());
+
+            let parser = match parser_res {
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Skipping to parse file {} due to following error: {}", &target, e.to_string());
+                    return;
+                }
+            };
 
             // iterate through elements
             for elem in parser.into_elem_iter() {
@@ -109,9 +114,9 @@ fn main() {
                     Some(asns) => asns[0].asn
                 };
 
-                ch_out_cl
-                    .send((origin, elem.peer_asn.asn, elem.peer_ip.to_string(), elem.prefix.prefix.to_string()))
-                    .unwrap();
+                if let Err(e) = ch_out_cl.send((origin, elem.peer_asn.asn, elem.peer_ip.to_string(), elem.prefix.prefix.to_string())) {
+                    println!("Failed to send pfx2as mapping to collector thread due to: {}", e.to_string())
+                }
             }
         });
     }
